@@ -11,7 +11,7 @@ const base = s => s.toLowerCase().replace(/ñ/g, '\u0001')
 
 const server = http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.end('Palabras encadenadas OK - version 3 vidas');
+  res.end('Palabras encadenadas OK');
 });
 const wss = new WebSocketServer({ server });
 
@@ -31,7 +31,7 @@ function broadcast(r) {
   const left = Math.max(0, Math.round((r.deadline - Date.now()) / 1000));
   const state = {
     t: 'state',
-    players: r.players.map(p => ({ id: p.id, name: p.name, lives: p.lives })),
+    players: r.players.map(p => ({ id: p.id, name: p.name, score: p.score, lives: p.lives })),
     over: r.over,
     winner: r.winner,
     words: r.words.slice(-100),
@@ -101,7 +101,7 @@ wss.on('connection', ws => {
       if (!code || !name) return send(ws, { t: 'err', msg: 'Nombre y sala obligatorios.' });
       room = getRoom(code);
       if (room.players.length >= 8) return send(ws, { t: 'err', msg: 'Sala llena (máx. 8).' });
-      me = { id: 'p' + nextId++, name, lives: r_over(room) ? 0 : LIVES, ws };
+      me = { id: 'p' + nextId++, name, score: 0, lives: r_over(room) ? 0 : LIVES, ws };
       room.players.push(me);
       if (!room.current && !room.over) { room.current = me.id; startTimer(room); }
       return broadcast(room);
@@ -116,12 +116,13 @@ wss.on('connection', ws => {
       if (ll && b[0] !== ll) return send(ws, { t: 'err', msg: `Debe empezar con «${ll.toUpperCase()}».` });
       if (room.words.some(x => base(x.w) === b)) return send(ws, { t: 'err', msg: 'Esa palabra ya se usó.' });
       room.words.push({ w, n: me.name });
+      me.score += w.length;
       nextTurn(room);
       broadcast(room);
     }
     if (m.t === 'reset') {
       room.words = [];
-      room.players.forEach(p => { p.lives = LIVES; });
+      room.players.forEach(p => { p.score = 0; p.lives = LIVES; });
       room.over = false;
       room.winner = null;
       room.current = room.players[0].id;
