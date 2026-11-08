@@ -132,6 +132,7 @@ wss.on('connection', ws => {
       if (room.over || room.current !== me.id || room.busy) return send(ws, { t: 'err', msg: 'No es tu turno.' });
       const w = String(m.w || '').trim().toLowerCase();
       if (!/^[a-záéíóúüñ]{2,25}$/.test(w)) return send(ws, { t: 'err', msg: 'Usa solo letras (mínimo 2).' });
+      if (/(.)\1\1/.test(w) || !/[aeiouáéíóúü]/.test(w)) return send(ws, { t: 'err', msg: `«${w}» no parece una palabra real.` });
       const b = base(w), ll = lastLetter(room);
       if (ll && b[0] !== ll) return send(ws, { t: 'err', msg: `Debe empezar con «${ll.toUpperCase()}».` });
 
