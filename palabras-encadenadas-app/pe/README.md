@@ -8,7 +8,7 @@ Estructura:
 1. Sube la carpeta `server/` a un repositorio de GitHub.
 2. En render.com: New > Web Service > conecta el repo.
    Build command: `npm install`   Start command: `npm start`
-3. Copia la URL que te dan, p. ej. `https://palabras-abc.onrender.com`.
+3. Copia la URL que te dan, p. ej. `https://palabras-encadenadas.onrender.com`.
    Prueba en el navegador: debe decir "Palabras encadenadas OK".
 (Plan gratuito: el servidor se "duerme" tras inactividad; la primera conexión tarda ~30 s.)
 
