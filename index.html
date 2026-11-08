@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Palabras encadenadas</title>
+<style>
+:root{--bg:#f6f4ee;--card:#fff;--tx:#1d1d1b;--mut:#6b6a63;--ac:#d9480f;--ok:#2b8a3e;--bd:#e3e0d6;color-scheme:light dark}
+@media (prefers-color-scheme:dark){:root{--bg:#17171a;--card:#232328;--tx:#f1efe8;--mut:#9a98a0;--ac:#ff8a4c;--ok:#69db7c;--bd:#33333a}}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--tx);font:16px/1.4 system-ui,-apple-system,Roboto,sans-serif;
+padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+main{max-width:480px;margin:0 auto;height:100%;padding:16px;display:flex;flex-direction:column;gap:10px}
+h1{font-size:22px;margin:4px 0}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:16px;padding:14px}
+input,button{font:inherit;border-radius:12px;border:1px solid var(--bd);padding:13px;background:var(--card);color:var(--tx);width:100%}
+input{font-size:18px}
+button{background:var(--ac);color:#fff;border:0;font-weight:600}
+button.sec{background:transparent;color:var(--mut);border:1px solid var(--bd)}
+button:disabled{opacity:.45}
+label{font-size:13px;color:var(--mut);display:block;margin:8px 0 4px}
+.row{display:flex;gap:8px}
+.hide{display:none!important}
+#players{display:flex;flex-wrap:wrap;gap:6px}
+.pl{padding:5px 10px;border-radius:99px;border:1px solid var(--bd);font-size:14px}
+.pl.dead{opacity:.45;text-decoration:line-through}
+.pl.turn{background:var(--ac);color:#fff;border-color:var(--ac)}
+#chain{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:6px;min-height:100px}
+.w{padding:8px 12px;border-radius:12px;border:1px solid var(--bd);align-self:flex-start;max-width:90%;word-break:break-word}
+.w b{color:var(--ac)}.w small{color:var(--mut);margin-left:6px}
+#hint{text-align:center;font-size:18px}#hint b{color:var(--ac);font-size:30px}
+#bar{height:6px;background:var(--bd);border-radius:9px;overflow:hidden}
+#fill{height:100%;background:var(--ok);width:100%;transition:width .25s linear}
+#msg{min-height:20px;color:var(--ac);font-size:14px;text-align:center}
+.sc{font-size:13px;color:var(--mut);text-align:center}
+</style>
+</head>
+<body>
+<main>
+<h1>🔗 Palabras encadenadas</h1>
+
+<section id="lobby" class="card">
+  <label for="nm">Tu nombre</label>
+  <input id="nm" maxlength="14" placeholder="Ej. Lucía" autocomplete="off">
+  <label for="rm">Código de sala (compártelo con tus amigos)</label>
+  <input id="rm" maxlength="12" placeholder="Ej. perro" autocapitalize="none" autocomplete="off">
+  <p class="sc">Cada palabra empieza con la última letra de la anterior. Tienes 3 vidas ❤️❤️❤️. Si se acaban los 25 s sin palabra, pierdes una vida. Gana el último en pie.</p>
+  <button id="go">Entrar a la sala</button>
+  <div id="lmsg" class="sc" style="margin-top:8px"></div>
+</section>
+
+<section id="game" class="hide" style="flex:1;min-height:0;display:flex;flex-direction:column;gap:10px">
+  <div id="players"></div>
+  <div id="hint"></div>
+  <div id="bar"><div id="fill"></div></div>
+  <div id="chain" class="card"></div>
+  <div id="msg"></div>
+  <div class="row">
+    <input id="wd" autocapitalize="none" autocomplete="off" autocorrect="off" spellcheck="false">
+    <button id="send" style="width:auto;padding:13px 20px">Enviar</button>
+  </div>
+  <div class="sc" id="sc"></div>
+  <button class="sec" id="reset">Reiniciar partida</button>
+</section>
+</main>
+
+<script>
+// Cambia esto por la URL de tu servidor (wss:// en producción, ws://localhost:8080 para pruebas)
+window.SERVER_URL = "ws://localhost:8080";
+</script>
+<script>
+(function(){
+var $=function(i){return document.getElementById(i)};
+var ws=null,S=null,name='',code='',left=0,tick=null,joined=false,retry=0;
+try{$('nm').value=localStorage.getItem('pe_name')||'';$('rm').value=localStorage.getItem('pe_room')||''}catch(e){}
+function esc(t){var d=document.createElement('div');d.textContent=t;return d.innerHTML}
+
+function connect(){
+  $('lmsg').textContent='Conectando…';
+  ws=new WebSocket(window.SERVER_URL);
+  ws.onopen=function(){retry=0;ws.send(JSON.stringify({t:'join',room:code,name:name}))};
+  ws.onmessage=function(e){
+    var m=JSON.parse(e.data);
+    if(m.t==='err'){
+      if(!joined){$('lmsg').textContent=m.msg;ws.close(4000)}else $('msg').textContent=m.msg;
+      return;
+    }
+    if(m.t==='state'){
+      if(!joined){joined=true;$('lobby').classList.add('hide');$('game').classList.remove('hide')}
+      S=m;left=m.left;$('msg').textContent='';render();
+    }
+  };
+  ws.onclose=function(e){
+    if(e.code===4000)return;
+    if(joined){$('msg').textContent='Reconectando…';}
+    else $('lmsg').textContent='No se pudo conectar al servidor.';
+    if(joined){retry++;setTimeout(function(){joined=false;$('game').classList.add('hide');$('lobby').classList.remove('hide');connect()},Math.min(1000*retry,5000))}
+  };
+}
+
+function render(){
+  var cur=S.players.filter(function(p){return p.id===S.current})[0], mine=S.current===S.me;
+  $('players').innerHTML=S.players.map(function(p){
+    var hearts='';for(var k=0;k<3;k++)hearts+=k<p.lives?'❤️':'💀';
+    return '<span class="pl'+(p.id===S.current?' turn':'')+(p.lives<=0?' dead':'')+'">'+esc(p.name)+(p.id===S.me?' (tú)':'')+' '+hearts+'</span>';
+  }).join('');
+  var meP=S.players.filter(function(p){return p.id===S.me})[0];
+  if(S.over){
+    $('hint').innerHTML='<b style="font-size:24px">'+(S.winner?'🏆 Gana '+esc(S.winner)+'!':'Fin de la partida')+'</b><br><small style="font-size:14px;color:var(--mut)">Pulsa «Reiniciar partida» para jugar otra vez</small>';
+    $('wd').disabled=$('send').disabled=true;$('wd').placeholder='Partida terminada';
+    $('fill').style.width='0%';
+    $('chain').innerHTML=S.words.map(function(x){var w=esc(x.w);return '<div class="w">'+w.slice(0,-1)+'<b>'+w.slice(-1)+'</b><small>'+esc(x.n)+'</small></div>';}).join('');
+    $('sc').textContent=S.total+' palabras en la cadena';
+    return;
+  }
+  $('hint').innerHTML=(S.letter?'Siguiente palabra con <b>'+S.letter.toUpperCase()+'</b>':'Palabra libre para empezar')+
+    '<br><small style="font-size:14px;color:var(--mut)">'+(meP&&meP.lives<=0?'Estás eliminado, mira cómo acaba 👀':mine?'¡Es tu turno!':'Turno de '+esc(cur?cur.name:'…'))+'</small>';
+  $('wd').disabled=$('send').disabled=!mine;
+  $('wd').placeholder=mine?'Escribe tu palabra':'Espera tu turno…';
+  $('chain').innerHTML=S.words.map(function(x){
+    var w=esc(x.w);return '<div class="w">'+w.slice(0,-1)+'<b>'+w.slice(-1)+'</b><small>'+esc(x.n)+'</small></div>';
+  }).join('')||'<div class="sc">Aún no hay palabras. ¡Empieza!</div>';
+  $('chain').scrollTop=1e6;
+  $('sc').textContent=S.total+' palabras en la cadena';
+  if(mine)$('wd').focus();
+}
+
+clearInterval(tick);
+tick=setInterval(function(){
+  if(!S||S.over)return;left=Math.max(0,left-0.25);
+  var f=$('fill');f.style.width=(left/25*100)+'%';f.style.background=left<8?'var(--ac)':'var(--ok)';
+},250);
+
+function submit(){
+  var w=$('wd').value.trim();if(!w||!ws||ws.readyState!==1)return;
+  ws.send(JSON.stringify({t:'word',w:w}));$('wd').value='';
+}
+$('go').onclick=function(){
+  name=$('nm').value.trim();code=$('rm').value.trim().toLowerCase().replace(/[^a-z0-9]/g,'');
+  if(!name||!code){$('lmsg').textContent='Escribe tu nombre y un código de sala.';return}
+  try{localStorage.setItem('pe_name',name);localStorage.setItem('pe_room',code)}catch(e){}
+  connect();
+};
+$('send').onclick=submit;
+$('wd').addEventListener('keydown',function(e){if(e.key==='Enter')submit()});
+$('reset').onclick=function(){if(ws&&ws.readyState===1)ws.send(JSON.stringify({t:'reset'}))};
+})();
+</script>
+</body>
+</html>
